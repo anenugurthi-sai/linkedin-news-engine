@@ -27,16 +27,14 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         run: |
+          python -c '
           import os
           import requests
           import feedparser
-          from datetime import datetime
 
-          # Connect to your GitHub secure vault keys
           NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
           DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
-          # High-value targets: Salesforce AI, Google News AI, and Top Curated AI Feeds
           FEEDS = [
             "https://news.google.com/rss/search?q=Salesforce+AI+Agentforce&hl=en-IN&gl=IN&ceid=IN:en",
             "https://news.google.com/rss/search?q=ChatGPT+Gemini+Anthropic+LLM+update&hl=en-IN&gl=IN&ceid=IN:en",
@@ -50,35 +48,25 @@ jobs:
           }
 
           print("Starting global AI feed analysis...")
-          
           seen_titles = set()
           count = 0
 
           for url in FEEDS:
               feed = feedparser.parse(url)
-              for entry in feed.entries[:5]: # Screen the top 5 most recent updates per feed
+              for entry in feed.entries[:5]:
                   title = entry.get("title", "")
                   link = entry.get("link", "")
                   
                   if title in seen_titles:
                       continue
                   seen_titles.add(title)
-
-                  # Clean up common publisher text from titles
                   clean_title = title.split(" - ")[0]
 
-                  # Format data payload for your Notion 'Incoming Streams' Kanban column
                   payload = {
                       "parent": { "database_id": DATABASE_ID },
                       "properties": {
-                          "Name": {
-                              "title": [
-                                  { "text": { "content": clean_title } }
-                              ]
-                          },
-                          "Status": {
-                              "status": { "name": "Incoming Streams" }
-                          }
+                          "Name": { "title": [ { "text": { "content": clean_title } } ] },
+                          "Status": { "status": { "name": "Incoming Streams" } }
                       },
                       "children": [
                           {
@@ -99,6 +87,7 @@ jobs:
                       count += 1
                       print(f"Successfully injected: {clean_title}")
                   else:
-                      print(f"Skipped or error pushing entry: {response.status_code}")
+                      print(f"Error pushing entry: {response.status_code}")
 
-          print(f"Workflow finished. Added {count} new high-value topics to your Notion board!")
+          print(f"Workflow finished. Added {count} new high-value topics!")
+          '
