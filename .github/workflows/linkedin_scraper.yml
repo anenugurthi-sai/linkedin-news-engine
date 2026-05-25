@@ -62,11 +62,11 @@ jobs:
                   seen_titles.add(title)
                   clean_title = title.split(" - ")[0]
 
+                  # Universal Payload: Just injects Name and Body content directly!
                   payload = {
                       "parent": { "database_id": DATABASE_ID },
                       "properties": {
-                          "Name": { "title": [ { "text": { "content": clean_title } } ] },
-                          "Status": { "status": { "name": "Not started" } }
+                          "Name": { "title": [ { "text": { "content": clean_title } } ] }
                       },
                       "children": [
                           {
@@ -87,7 +87,7 @@ jobs:
                       count += 1
                       print(f"Successfully injected: {clean_title}")
                   else:
-                      print(f"Error pushing entry: {response.status_code}")
+                      print(f"Error status code: {response.status_code} - Details: {response.text}")
 
           print(f"Workflow finished. Added {count} new high-value topics!")
           '
