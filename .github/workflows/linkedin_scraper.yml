@@ -1,3 +1,5 @@
+Python Code
+
 name: AI News LinkedIn Engine
 
 on:
@@ -120,3 +122,4 @@ CRITICAL CONSTRAINT: Absolutely eliminate all mentions of enterprise funding, st
                       print(f"Error: {response.status_code}")
                   break
           '
+
