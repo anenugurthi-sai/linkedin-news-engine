@@ -1,130 +1,141 @@
 name: AI News LinkedIn Engine
+
 on:
-schedule:
-- cron: '0 2 * * *' # Runs automatically every day at 7:30 AM IST
-workflow_dispatch: # Allows manual trigger
+  schedule:
+    - cron: '0 2 * * *' # Runs automatically every day at 7:30 AM IST
+  workflow_dispatch: # Allows manual trigger
+
 jobs:
-fetch-and-update:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout repository code
-uses: actions/checkout@v4
-- name: Set up Python Environment
-uses: actions/setup-python@v5
-with:
-python-version: '3.10'
-- name: Install Necessary Connectors
-run: |
-python -m pip install --upgrade pip
-pip install requests feedparser
-- name: Execute Smart Scraper, AI Writer, and Push to Notion
-env:
-NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-run: |
-python -c '
-import os
-import requests
-import feedparser
-import json
-NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
-DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-# Scrape a focused feed for the absolute best single update
-FEEDS = [
-"https://news.google.com/rss/search?q=Salesforce+AI+Agentforce+automation&hl=en-IN&gl
-=IN&ceid=IN:en"
-]
-def generate_linkedin_post(title, link):
-url =
-f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateConte
-nt?key={GEMINI_KEY}"
-headers = {"Content-Type": "application/json"}
-prompt = f"""
-Write a short, engaging, highly conversational LinkedIn post breaking down this
-news topic: "{title}".
-You must write this EXACTLY in the style of the following reference post:
-\"\"\"
-Everyone is talking about AI.
-But let me tell you something, it’s not just for techies.
-AI is slowly becoming a daily tool for students, professionals, and even creators like
-us.
-Think about it:
-- Students can turn 200 pages of a textbook into a 2-page summary in minutes.
-- Working professionals can cut hours of repetitive work with a single smart prompt.
-- Creators are using AI to brainstorm, script, and even design visuals.
-I recently started exploring this deeply, and here’s what I learned: AI is not about
-replacing people, it’s about upgrading ourselves. 🚀
-👉 What’s the most surprising way you’ve seen AI being used?
-\"\"\"
-CRITICAL ARCHITECTURAL RULES:
-1. Never use corporate, hype-heavy AI words like: "delve", "testament",
-"revolutionize", "landscape", "paradigm shift", "leverage", "furthermore", "moreover",
-"cutting-edge", "game-changer".
-2. Keep vocabulary incredibly simple, clear, and direct. Use short, crisp sentences.
-3. Break your ideas up with plenty of line spaces so it is highly readable on mobile
-screens. No dense blocks of text.
-4. Structure the narrative exactly like the reference style:
-- Open with a simple, human hook (2 separate short lines).
-- Add a brief context line.
-- Use a conversational bridge like "Think about it:" followed by 2 or 3 short,
-practical bullet points showcasing real-world impact.
-- End with a personal reflection lesson ("I recently noticed..." or "What I am
-learning is...").
-- Add a single simple emoji at the end of the reflection line.
-- End with a natural question using the pointing finger emoji (👉).
-At the absolute bottom, add the source link on its own line:
-Link to source: {link}
-Generate ONLY the final post text. Do not include introductory notes, markdown
-backticks, or labels.
-"""
-data = {"contents": [{"parts": [{"text": prompt}]}]}
-try:
-response = requests.post(url, headers=headers, json=data)
-if response.status_code == 200:
-result = response.json()
-return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-except Exception as e:
-print(f"AI generation failed: {e}")
-return f"Fresh update on: {title}\n\nSource: {link}"
-headers = {
-"Authorization": f"Bearer {NOTION_TOKEN}",
-"Content-Type": "application/json",
-"Notion-Version": "2022-06-28"
-}
-print("Running premium voice generation...")
-for url in FEEDS:
-feed = feedparser.parse(url)
-if feed.entries:
-entry = feed.entries[0] # Focus intensely on the #1 single best article of the day
-title = entry.get("title", "")
-link = entry.get("link", "")
-clean_title = title.split(" - ")[0]
-print(f"Crafting premium narrative copy for: {clean_title}")
-custom_post_content = generate_linkedin_post(clean_title, link)
-payload = {
-"parent": { "database_id": DATABASE_ID },
-"properties": {
-"Name": { "title": [ { "text": { "content": clean_title } } ] }
-},
-"children": [
-{
-"object": "block",
-"type": "paragraph",
-"paragraph": {
-"rich_text": [
-{ "type": "text", "text": { "content": custom_post_content } }
-]
-}
-}
-]
-}
-response = requests.post("https://api.notion.com/v1/pages", headers=headers,
-json=payload)
-if response.status_code == 200:
-print("Successfully updated Notion with an authentic premium draft!")
-else:
-print(f"Error: {response.status_code}")
-break
-'
+  fetch-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Necessary Connectors
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests feedparser
+
+      - name: Execute Smart Scraper, AI Writer, and Push to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python -c '
+          import os
+          import requests
+          import feedparser
+          import json
+
+          NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
+          DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
+          GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+
+          # Scrape a focused feed for the absolute best single update
+          FEEDS = [
+            "https://news.google.com/rss/search?q=Salesforce+AI+Agentforce+automation&hl=en-IN&gl=IN&ceid=IN:en"
+          ]
+
+          def generate_linkedin_post(title, link):
+              url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+              headers = {"Content-Type": "application/json"}
+              
+              prompt = f"""
+              Write a short, engaging, highly conversational LinkedIn post breaking down this news topic: "{title}".
+              
+              You must write this EXACTLY in the style of the following reference post:
+              \"\"\"
+              Everyone is talking about AI.
+              But let me tell you something, it’s not just for techies.
+              
+              AI is slowly becoming a daily tool for students, professionals, and even creators like us.
+              
+              Think about it:
+              - Students can turn 200 pages of a textbook into a 2-page summary in minutes.
+              - Working professionals can cut hours of repetitive work with a single smart prompt.
+              - Creators are using AI to brainstorm, script, and even design visuals.
+              
+              I recently started exploring this deeply, and here’s what I learned: AI is not about replacing people, it’s about upgrading ourselves. 🚀
+              
+              👉 What’s the most surprising way you’ve seen AI being used?
+              \"\"\"
+
+              CRITICAL ARCHITECTURAL RULES:
+              1. Never use corporate, hype-heavy AI words like: "delve", "testament", "revolutionize", "landscape", "paradigm shift", "leverage", "furthermore", "moreover", "cutting-edge", "game-changer".
+              2. Keep vocabulary incredibly simple, clear, and direct. Use short, crisp sentences.
+              3. Break your ideas up with plenty of line spaces so it is highly readable on mobile screens. No dense blocks of text.
+              4. Structure the narrative exactly like the reference style:
+                 - Open with a simple, human hook (2 separate short lines).
+                 - Add a brief context line.
+                 - Use a conversational bridge like "Think about it:" followed by 2 or 3 short, practical bullet points showcasing real-world impact.
+                 - End with a personal reflection lesson ("I recently noticed..." or "What I am learning is...").
+                 - Add a single simple emoji at the end of the reflection line.
+                 - End with a natural question using the pointing finger emoji (👉).
+              
+              At the absolute bottom, add the source link on its own line:
+              Link to source: {link}
+
+              Generate ONLY the final post text. Do not include introductory notes, markdown backticks, or labels.
+              """
+              
+              data = {"contents": [{"parts": [{"text": prompt}]}]}
+              
+              try:
+                  response = requests.post(url, headers=headers, json=data)
+                  if response.status_code == 200:
+                      result = response.json()
+                      return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+              except Exception as e:
+                  print(f"AI generation failed: {e}")
+              return f"Fresh update on: {title}\n\nSource: {link}"
+
+          headers = {
+              "Authorization": f"Bearer {NOTION_TOKEN}",
+              "Content-Type": "application/json",
+              "Notion-Version": "2022-06-28"
+          }
+
+          print("Running premium voice generation...")
+          for url in FEEDS:
+              feed = feedparser.parse(url)
+              if feed.entries:
+                  entry = feed.entries[0] # Focus intensely on the #1 single best article of the day
+                  title = entry.get("title", "")
+                  link = entry.get("link", "")
+                  clean_title = title.split(" - ")[0]
+
+                  print(f"Crafting premium narrative copy for: {clean_title}")
+                  custom_post_content = generate_linkedin_post(clean_title, link)
+
+                  payload = {
+                      "parent": { "database_id": DATABASE_ID },
+                      "properties": {
+                          "Name": { "title": [ { "text": { "content": clean_title } } ] }
+                      },
+                      "children": [
+                          {
+                              "object": "block",
+                              "type": "paragraph",
+                              "paragraph": {
+                                  "rich_text": [
+                                      { "type": "text", "text": { "content": custom_post_content } }
+                                  ]
+                              }
+                          }
+                      ]
+                  }
+
+                  response = requests.post("https://api.notion.com/v1/pages", headers=headers, json=payload)
+                  if response.status_code == 200:
+                      print("Successfully updated Notion with an authentic premium draft!")
+                  else:
+                      print(f"Error: {response.status_code}")
+                  break
+          '
