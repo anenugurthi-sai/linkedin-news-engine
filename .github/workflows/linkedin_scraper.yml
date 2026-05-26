@@ -48,21 +48,6 @@ jobs:
               headers = {"Content-Type": "application/json"}
               
               prompt = f"""
-
-import os
-import requests
-from datetime import datetime
-# If you are using openai or google-generativeai, import them here
-# import google.generativeai as genai
-
-def generate_linkedin_post(raw_news_content):
-    """
-    Takes raw news content and uses an LLM to rewrite it into a 
-    high-impact LinkedIn post using your custom career-focused prompt.
-    """
-    
-    # 1. Define the system prompt correctly inside Python triple-quotes
-    system_prompt = """
     You are a world-class personal branding copywriter specializing in highly actionable LinkedIn content for working professionals, job seekers, and interns. Your tone is direct, high-energy, and completely professional—inspired by growth leaders like Vaibhav Sisinty.
 
     Analyze the incoming raw technical text and rewrite it into a high-impact LinkedIn post strictly following this structure:
@@ -99,9 +84,8 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 DATABASE_ID = "36bdc8e4cd98808abbf9c024f82b0b19"
 
 print("Script compiled with no syntax errors.")
-              
+      
               """
-              
               data = {"contents": [{"parts": [{"text": prompt}]}]}
               
               try:
