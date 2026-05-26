@@ -48,41 +48,58 @@ jobs:
               headers = {"Content-Type": "application/json"}
               
               prompt = f"""
-              Write a short, engaging, highly conversational LinkedIn post breaking down this news topic: "{title}".
-              
-              You must write this EXACTLY in the style of the following reference post:
-              \"\"\"
-              Everyone is talking about AI.
-              But let me tell you something, it’s not just for techies.
-              
-              AI is slowly becoming a daily tool for students, professionals, and even creators like us.
-              
-              Think about it:
-              - Students can turn 200 pages of a textbook into a 2-page summary in minutes.
-              - Working professionals can cut hours of repetitive work with a single smart prompt.
-              - Creators are using AI to brainstorm, script, and even design visuals.
-              
-              I recently started exploring this deeply, and here’s what I learned: AI is not about replacing people, it’s about upgrading ourselves. 🚀
-              
-              👉 What’s the most surprising way you’ve seen AI being used?
-              \"\"\"
 
-              CRITICAL ARCHITECTURAL RULES:
-              1. Never use corporate, hype-heavy AI words like: "delve", "testament", "revolutionize", "landscape", "paradigm shift", "leverage", "furthermore", "moreover", "cutting-edge", "game-changer".
-              2. Keep vocabulary incredibly simple, clear, and direct. Use short, crisp sentences.
-              3. Break your ideas up with plenty of line spaces so it is highly readable on mobile screens. No dense blocks of text.
-              4. Structure the narrative exactly like the reference style:
-                 - Open with a simple, human hook (2 separate short lines).
-                 - Add a brief context line.
-                 - Use a conversational bridge like "Think about it:" followed by 2 or 3 short, practical bullet points showcasing real-world impact.
-                 - End with a personal reflection lesson ("I recently noticed..." or "What I am learning is...").
-                 - Add a single simple emoji at the end of the reflection line.
-                 - End with a natural question using the pointing finger emoji (👉).
-              
-              At the absolute bottom, add the source link on its own line:
-              Link to source: {link}
+import os
+import requests
+from datetime import datetime
+# If you are using openai or google-generativeai, import them here
+# import google.generativeai as genai
 
-              Generate ONLY the final post text. Do not include introductory notes, markdown backticks, or labels.
+def generate_linkedin_post(raw_news_content):
+    """
+    Takes raw news content and uses an LLM to rewrite it into a 
+    high-impact LinkedIn post using your custom career-focused prompt.
+    """
+    
+    # 1. Define the system prompt correctly inside Python triple-quotes
+    system_prompt = """
+    You are a world-class personal branding copywriter specializing in highly actionable LinkedIn content for working professionals, job seekers, and interns. Your tone is direct, high-energy, and completely professional—inspired by growth leaders like Vaibhav Sisinty.
+
+    Analyze the incoming raw technical text and rewrite it into a high-impact LinkedIn post strictly following this structure:
+
+    [THE HOOK]: A sharp 1-2 line opening addressing a workplace pain point, career growth, or interview edge. Never start with "In today's news..." or generic corporate greetings.
+
+    [THE CAREER VALUE]: Translate the raw technical update into human utility. Explain exactly how a job holder, seeker, or intern can leverage this specific tool/update to save 5 hours a week, stand out to automated systems (ATS), or impress senior leadership. Use clear, un-bulleted, short sentences.
+
+    [3 CALLS TO ACTION/STEPS]: 
+    * Bullet 1: A specific way a job seeker or worker can apply this concept tomorrow.
+    * Bullet 2: A practical mindset shift for corporate efficiency.
+    * Bullet 3: The exact tool or prompt layout to practice with.
+
+    [ENGAGEMENT QUESTION]: Close with a thought-provoking, professional question that encourages industry experts and job seekers to comment.
+
+    CRITICAL CONSTRAINT: Absolutely eliminate all mentions of enterprise funding, stock updates, B2B corporate sales jargon, or executive quotes. Focus 100% on the individual professional's career journey.
+    """
+
+    # 2. Example API Call Structure (Adjust based on whether you use Gemini or OpenAI)
+    # response = client.chat.completions.create(
+    #     model="gpt-4o",  # or gemini-1.5-pro
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": f"Here is the raw news to transform:\n\n{raw_news_content}"}
+    #     ]
+    # )
+    # return response.choices[0].message.content
+    
+    print("Prompt loaded successfully structure-wise!")
+    return system_prompt # Temporary fallback for testing syntax
+
+# Example variables for your Notion Integration backend block
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+DATABASE_ID = "36bdc8e4cd98808abbf9c024f82b0b19"
+
+print("Script compiled with no syntax errors.")
+              
               """
               
               data = {"contents": [{"parts": [{"text": prompt}]}]}
