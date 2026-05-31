@@ -108,7 +108,7 @@ for feed_url in FEEDS:
         clean_title = title.split(" - ")[0].strip()
 
         # Run our strict pre-flight filtration engine
-        if contains_blocked_content(clean_title) or contains_blocked_content(summary):
+        if contains_blocked_content(clean_title):
             continue
 
         print(f"🔥 High-signal match confirmed: {clean_title}")
