@@ -9,10 +9,12 @@ DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 
 # 1. SPECIALIZED HIGH-SIGNAL SOURCES (No generic news aggregators)
+# 1. SPECIALIZED HIGH-SIGNAL SOURCES (Targeting your elite power stack directly)
 FEEDS = [
-    "https://tldr.tech/ai/rss",                              # Curated underground tactics & top-tier tech drops
-    "https://openai.com/newsroom/news.xml",                  # OpenAI official product/feature announcements
-    "https://www.anthropic.com/news"                         # Anthropic (Claude) official pressroom announcements
+    "https://news.google.com/rss/search?q=Claude+AI+OR+Anthropic+productivity+workplace&hl=en-IN&gl=IN&ceid=IN:en",
+    "https://news.google.com/rss/search?q=ChatGPT+OR+OpenAI+automation+features&hl=en-IN&gl=IN&ceid=IN:en",
+    "https://news.google.com/rss/search?q=Perplexity+AI+research+search+engine&hl=en-IN&gl=IN&ceid=IN:en",
+    "https://news.google.com/rss/search?q=Notion+AI+productivity+workspace&hl=en-IN&gl=IN&ceid=IN:en"
 ]
 
 # 2. THE STRICT LINKEDIN BRAND CRINGE BLOCKLIST
