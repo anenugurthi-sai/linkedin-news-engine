@@ -12,13 +12,8 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 # 1. SPECIALIZED HIGH-SIGNAL SOURCES (Targeting your elite power stack directly)
 # 1. EXPANDED HIGH-SIGNAL SOURCES (Targeting advanced workflows & priority stack)
 FEEDS = [
-    "https://news.google.com/rss/search?q=Claude+AI+OR+Anthropic+productivity+workplace&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=ChatGPT+OR+OpenAI+automation+features&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=Perplexity+AI+research+search+engine&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=Notion+AI+productivity+workspace&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=AI+agents+OR+autonomous+workflows+OR+CrewAI+productivity&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=browser+use+AI+OR+desktop+automation+OR+computer+use+Anthropic&hl=en-IN&gl=IN&ceid=IN:en",
-    "https://news.google.com/rss/search?q=open-source+AI+productivity+OR+Ollama+OR+local+LLM+workplace&hl=en-IN&gl=IN&ceid=IN:en"
+    "https://www.reddit.com/r/ArtificialIntelligence/search.rss?q=productivity+OR+workflow+OR+automate+AND+Claude+OR+ChatGPT&sort=top&t=week"
+    "https://www.reddit.com/r/Automate+LocalLLaMA/search.rss?q=agents+OR+autonomous+OR+crewai&sort=top&t=week"
 ]
 
 # 2. THE STRICT LINKEDIN BRAND CRINGE BLOCKLIST
