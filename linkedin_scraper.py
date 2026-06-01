@@ -65,9 +65,6 @@ def generate_linkedin_post(title, link, snippet=""):
 
     [ENGAGEMENT LESSON & QUESTION]: End with a personal reflection lesson ("I recently noticed..." or "What I am learning is...") featuring a single simple emoji at the end of the reflection line. Then close with a thought-provoking, high-level professional question that encourages industry experts to comment using the pointing finger emoji (👉).
 
-    At the absolute bottom, add the source link on its own line:
-    Link to source: {link}
-
     CRITICAL ARCHITECTURAL RULES:
     1. ZERO TOLERANCE FOR ENTRY-LEVEL CONTENT. Never explain "how to draft an email", "how to summarize text", or basic chat commands. Assume the reader is already an advanced user.
     2. Never use corporate, hype-heavy AI words like: "delve", "testament", "revolutionize", "landscape", "paradigm shift", "leverage", "furthermore", "moreover", "cutting-edge", "game-changer".
