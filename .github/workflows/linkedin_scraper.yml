@@ -3,17 +3,18 @@ name: AI News LinkedIn Engine
 on:
   schedule:
     - cron: '0 2 * * *' # Runs automatically every day at 7:30 AM IST
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
 
 jobs:
   fetch-and-update:
-    runs-on: ubuntu-latest
+    # Pin to Ubuntu 24.04 to avoid an unannounced ubuntu-latest image migration.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python Environment
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
