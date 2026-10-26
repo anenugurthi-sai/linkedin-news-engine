@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import requests
 import feedparser
 from html.parser import HTMLParser
@@ -12,6 +13,13 @@ POST_TARGET_MIN_WORDS = 100
 POST_TARGET_MAX_WORDS = 150
 POST_HARD_MAX_WORDS = 160
 REQUEST_TIMEOUT = 45
+MAX_CANDIDATES_PER_RUN = 8
+GEMINI_RETRY_DELAYS = (3, 8)
+
+
+class GeminiAPIError(Exception):
+    """Raised when Gemini cannot process a request and the run should stop."""
+
 
 FEEDS = [
     "https://news.google.com/rss/search?q=Claude+AI+OR+Anthropic+productivity+workplace&hl=en-IN&gl=IN&ceid=IN:en",
@@ -50,29 +58,57 @@ def count_words(text):
 
 
 def call_gemini(prompt):
-    """Call Gemini with a timeout; return text or an empty string on failure."""
+    """Call Gemini with bounded retries; stop the run if the API remains unavailable."""
     if not GEMINI_KEY:
-        print("GEMINI_API_KEY is not configured.")
-        return ""
-    try:
-        response = requests.post(
-            GEMINI_URL,
-            params={"key": GEMINI_KEY},
-            headers={"Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            timeout=REQUEST_TIMEOUT,
-        )
-        if response.status_code != 200:
-            print(f"Gemini API error: HTTP {response.status_code}")
-            return ""
+        raise GeminiAPIError("GEMINI_API_KEY is not configured.")
+
+    retryable_statuses = {429, 500, 502, 503, 504}
+    for attempt in range(len(GEMINI_RETRY_DELAYS) + 1):
         try:
-            return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (KeyError, IndexError, TypeError, ValueError):
-            print("Gemini response did not contain generated text.")
-            return ""
-    except requests.RequestException as exc:
-        print(f"Gemini request failed: {exc}")
-        return ""
+            response = requests.post(
+                GEMINI_URL,
+                params={"key": GEMINI_KEY},
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            if attempt < len(GEMINI_RETRY_DELAYS):
+                delay = GEMINI_RETRY_DELAYS[attempt]
+                print(f"Gemini network error; retrying in {delay}s ({attempt + 1}/{len(GEMINI_RETRY_DELAYS)}): {exc}")
+                time.sleep(delay)
+                continue
+            raise GeminiAPIError(f"network request failed after retries: {exc}") from exc
+
+        if response.status_code == 200:
+            try:
+                return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            except (KeyError, IndexError, TypeError, ValueError):
+                print("Gemini response did not contain generated text.")
+                return ""
+
+        try:
+            details = response.json().get("error", {}).get("message", "")
+        except (ValueError, AttributeError):
+            details = response.text[:250]
+        details = details or "No error details returned."
+
+        # Daily quota exhaustion will not be fixed by retrying within this run.
+        lowered_details = details.lower()
+        daily_quota_exhausted = (
+            response.status_code == 429
+            and any(term in lowered_details for term in ("daily", "per day", "quota exceeded", "resource_exhausted"))
+        )
+        if response.status_code in retryable_statuses and not daily_quota_exhausted and attempt < len(GEMINI_RETRY_DELAYS):
+            delay = GEMINI_RETRY_DELAYS[attempt]
+            print(f"Gemini API error: HTTP {response.status_code}; retrying in {delay}s ({attempt + 1}/{len(GEMINI_RETRY_DELAYS)}).")
+            time.sleep(delay)
+            continue
+
+        print(f"Gemini API error: HTTP {response.status_code} - {details[:300]}")
+        raise GeminiAPIError(f"HTTP {response.status_code}: {details[:300]}")
+
+    raise GeminiAPIError("request failed after retries.")
 
 
 class ArticleTextExtractor(HTMLParser):
@@ -326,7 +362,11 @@ def main():
         print("One or more required secrets are missing; stopping before feed processing.")
         return
 
+    candidates_checked = 0
     for feed_url in FEEDS:
+        if candidates_checked >= MAX_CANDIDATES_PER_RUN:
+            print(f"Candidate limit reached ({MAX_CANDIDATES_PER_RUN}); stopping this run.")
+            break
         print(f"Scanning source stream: {feed_url}")
         try:
             if "reddit.com" in feed_url:
@@ -345,8 +385,16 @@ def main():
             if not clean_title or contains_blocked_content(clean_title):
                 continue
 
-            print(f"Candidate headline: {clean_title}")
-            post = generate_linkedin_post(clean_title, link, snippet)
+            if candidates_checked >= MAX_CANDIDATES_PER_RUN:
+                print(f"Candidate limit reached ({MAX_CANDIDATES_PER_RUN}); stopping this run.")
+                break
+            candidates_checked += 1
+            print(f"Candidate headline ({candidates_checked}/{MAX_CANDIDATES_PER_RUN}): {clean_title}")
+            try:
+                post = generate_linkedin_post(clean_title, link, snippet)
+            except GeminiAPIError as exc:
+                print(f"Stopping run to avoid repeated failed API calls: {exc}")
+                return
             if not post:
                 print("Skipping candidate because no acceptable draft was generated.")
                 continue
