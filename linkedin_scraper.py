@@ -142,7 +142,23 @@ GENERIC_PHRASES = (
     "the evolving landscape", "valuable insights", "important shifts",
     "monitoring these internal changes", "the industry's direction",
     "keeping an eye on", "in today's fast-paced world", "this is a game changer",
+    "deeper expertise", "strategic thinking", "complex problem-solving",
+    "nuanced judgment", "paramount", "evolving workforce needs",
+    "complement ai", "competing directly with ai", "reshaping workforce needs",
+    "offers a glimpse into", "the practical takeaway is to focus on developing",
 )
+
+CORPORATE_PHRASES = (
+    "leverage", "synergy", "paradigm", "robust", "transformative",
+    "landscape", "navigate", "unlock", "seamlessly", "optimize",
+    "strategic imperative", "value proposition", "at scale",
+)
+
+
+def has_complex_or_corporate_language(post):
+    """Catch common corporate language that does not fit the user's plain-English style."""
+    lowered = post.lower()
+    return any(phrase in lowered for phrase in CORPORATE_PHRASES)
 
 
 def has_generic_filler(post):
@@ -153,7 +169,7 @@ def has_generic_filler(post):
 
 def build_post_prompt(title, link, snippet):
     return f"""
-Write one specific, source-grounded LinkedIn post for professionals interested in AI and technology.
+Write one short, specific LinkedIn post about AI or technology. Write in the user's style: basic, natural English, direct and practical, like a working professional explaining something clearly to a colleague.
 
 SOURCE HEADLINE:
 {title}
@@ -165,17 +181,18 @@ SOURCE MATERIAL (RSS summary and any article text retrieved):
 {snippet}
 
 EDITORIAL REQUIREMENTS:
-- Aim for {POST_TARGET_MIN_WORDS}-{POST_TARGET_MAX_WORDS} words, but shorter is better than filler. Never exceed {POST_HARD_MAX_WORDS} words.
-- State the actual reported event, product change, research finding, or announcement in the first 1-2 sentences. Name the company, product, feature, result, or change when the source provides it.
-- Include at least one concrete, verifiable detail from the supplied source. If no concrete detail is available, do not generalize or guess; return exactly SKIP: INSUFFICIENT SOURCE DETAIL.
-- Explain one credible implication for professionals, clearly marking interpretation as interpretation rather than fact.
-- Give at most one practical takeaway, and only if it logically follows from the source.
-- Use simple English, short sentences, and short mobile-friendly paragraphs.
-- Do not invent workforce changes, motivations, features, settings, configurations, statistics, outcomes, quotes, or implementation steps.
-- Do not infer an organization's strategy, hiring needs, or market direction from a vague headline alone.
-- Do not claim personal experience unless explicitly supplied in the source.
-- Avoid vague filler such as "the evolving landscape", "valuable insights", "important shifts", and "keeping an eye on".
-- Do not force bullets, personal reflection, emojis, hashtags, or a closing question.
+- Prefer 60-110 words. A post can be shorter when the story is simple. Never exceed {POST_HARD_MAX_WORDS} words. Do not add words just to reach a target.
+- Start with the actual reported event in the first sentence. Name the company, product, or change and include a concrete detail from the source.
+- Explain only what the source confirms. Do not turn a reported change into a claim about why it happened unless the source explicitly says why.
+- If the source does not provide a clear event and at least one concrete detail, return exactly SKIP: INSUFFICIENT SOURCE DETAIL.
+- Add one short "why it matters" point only when it follows directly from the facts. Clearly separate fact from possible implication.
+- Do not force a lesson, career advice, prediction, or practical takeaway. If there is no useful takeaway supported by the story, leave it out.
+- Write like the user: basic everyday English, direct and natural, short sentences, short paragraphs. Use words people commonly use in normal conversation.
+- Avoid corporate jargon, complex vocabulary, grand claims, formal report language, and phrases that sound like a company announcement.
+- Do not use words or phrases such as "paramount", "nuanced judgment", "strategic thinking", "evolving landscape", "valuable insights", "leverage", "synergy", "transformative", or "offers a glimpse into".
+- Do not invent numbers, dates, motives, workforce changes, features, settings, outcomes, quotes, or steps.
+- Do not claim personal experience or write "I" as if the user personally did something.
+- No forced bullets, emojis, hashtags, or closing questions.
 - Return only the post text. No title, labels, analysis, word count, or code fence.
 """.strip()
 
@@ -192,19 +209,26 @@ def generate_linkedin_post(title, link, snippet=""):
         return None
 
     words = count_words(post)
-    needs_revision = words > POST_HARD_MAX_WORDS or has_generic_filler(post)
+    needs_revision = (
+        words > POST_HARD_MAX_WORDS
+        or has_generic_filler(post)
+        or has_complex_or_corporate_language(post)
+    )
     if needs_revision:
         reasons = []
         if words > POST_HARD_MAX_WORDS:
             reasons.append(f"over the {POST_HARD_MAX_WORDS}-word limit ({words} words)")
         if has_generic_filler(post):
             reasons.append("contains generic filler")
+        if has_complex_or_corporate_language(post):
+            reasons.append("uses corporate or complex language")
         print("Requesting one revision: " + "; ".join(reasons))
         retry_prompt = (
             prompt
             + f"\n\nREVISION REQUIRED: The previous draft {', '.join(reasons)}. "
             + f"Rewrite in no more than {POST_TARGET_MAX_WORDS} words. Name the concrete source fact, "
-            + "remove vague claims and unsupported inference. If source evidence is insufficient, "
+            + "use basic everyday English, remove corporate language, vague claims and unsupported inference. "
+            + "Do not add a takeaway unless the facts support it. If source evidence is insufficient, "
             + "return exactly SKIP: INSUFFICIENT SOURCE DETAIL. Return only the revised post."
         )
         post = call_gemini(retry_prompt)
@@ -212,8 +236,12 @@ def generate_linkedin_post(title, link, snippet=""):
             return None
         words = count_words(post)
 
-    if words > POST_HARD_MAX_WORDS or has_generic_filler(post):
-        print(f"Skipping draft: failed quality checks (words={words}, generic_filler={has_generic_filler(post)}).")
+    if words > POST_HARD_MAX_WORDS or has_generic_filler(post) or has_complex_or_corporate_language(post):
+        print(
+            "Skipping draft: failed quality checks "
+            f"(words={words}, generic_filler={has_generic_filler(post)}, "
+            f"corporate_language={has_complex_or_corporate_language(post)})."
+        )
         return None
 
     print(f"Draft passed quality checks: {words} words.")
