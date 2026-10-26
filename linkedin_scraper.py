@@ -197,8 +197,44 @@ EDITORIAL REQUIREMENTS:
 """.strip()
 
 
+def verify_post_against_source(post, title, link, source_context):
+    """Use a separate model pass to reject claims that the supplied source does not support."""
+    verification_prompt = f"""
+You are a strict fact checker for a LinkedIn post. Compare the draft only with the source material below.
+Do not use outside knowledge or guess what probably happened.
+
+SOURCE HEADLINE:
+{title}
+
+SOURCE URL:
+{link}
+
+SOURCE MATERIAL:
+{source_context}
+
+DRAFT TO CHECK:
+{post}
+
+Return PASS only if all these conditions are met:
+- Every factual claim is directly supported by the source material.
+- Any claim explaining why something happened is explicitly stated by the source, not guessed from timing or context.
+- Any prediction or interpretation is clearly marked as a possibility and follows reasonably from the source.
+- The draft does not add general career advice just to fill space.
+- The draft is written in basic everyday English and does not use corporate jargon.
+
+If any condition fails, or if the source material is too thin to check the claims, return exactly SKIP.
+Return only PASS or SKIP.
+""".strip()
+    result = call_gemini(verification_prompt).strip().upper()
+    if result == "PASS":
+        print("Source verification passed.")
+        return True
+    print("Skipping draft: source verification failed or evidence was insufficient.")
+    return False
+
+
 def generate_linkedin_post(title, link, snippet=""):
-    """Generate a post; retry once if long, then reject any draft over the hard limit."""
+    """Generate, quality-check, and independently verify a post before publishing."""
     source_context = fetch_source_context(link, snippet)
     prompt = build_post_prompt(title, link, source_context)
     post = call_gemini(prompt)
@@ -244,7 +280,9 @@ def generate_linkedin_post(title, link, snippet=""):
         )
         return None
 
-    print(f"Draft passed quality checks: {words} words.")
+    print(f"Draft passed style and length checks: {words} words.")
+    if not verify_post_against_source(post, title, link, source_context):
+        return None
     return post
 
 
