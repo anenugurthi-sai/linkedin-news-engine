@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import feedparser
+from html.parser import HTMLParser
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
@@ -74,9 +75,85 @@ def call_gemini(prompt):
         return ""
 
 
+class ArticleTextExtractor(HTMLParser):
+    """Extract title, description, and paragraph text from a linked article."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.in_title = False
+        self.in_paragraph = False
+        self.title_parts = []
+        self.paragraphs = []
+        self.meta_description = ""
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        elif tag == "p":
+            self.in_paragraph = True
+        elif tag == "meta" and attrs.get("name", "").lower() in ("description", "og:description"):
+            self.meta_description = attrs.get("content", "")
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+        elif tag == "p":
+            self.in_paragraph = False
+
+    def handle_data(self, data):
+        text = " ".join(data.split())
+        if not text:
+            return
+        if self.in_title:
+            self.title_parts.append(text)
+        if self.in_paragraph and len(text) > 35:
+            self.paragraphs.append(text)
+
+
+def fetch_source_context(link, snippet=""):
+    """Try to enrich the RSS summary with the linked article's title and paragraph text."""
+    if not link:
+        return snippet
+    try:
+        response = requests.get(
+            link,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; AINewsLinkedInEngine/2.1)"},
+            timeout=15,
+        )
+        if response.status_code != 200 or "html" not in response.headers.get("Content-Type", "").lower():
+            return snippet
+        parser = ArticleTextExtractor()
+        parser.feed(response.text[:1_500_000])
+        parts = []
+        if parser.title_parts:
+            parts.append("Page title: " + " ".join(parser.title_parts))
+        if parser.meta_description:
+            parts.append("Page description: " + parser.meta_description)
+        # Limit article text to avoid sending navigation/footer content or excessive tokens.
+        parts.extend(parser.paragraphs[:12])
+        extracted = "\n".join(parts)[:9000]
+        return "\n\n".join(part for part in (snippet, extracted) if part)
+    except (requests.RequestException, ValueError) as exc:
+        print(f"Could not fetch source article; using RSS summary only: {exc}")
+        return snippet
+
+
+GENERIC_PHRASES = (
+    "the evolving landscape", "valuable insights", "important shifts",
+    "monitoring these internal changes", "the industry's direction",
+    "keeping an eye on", "in today's fast-paced world", "this is a game changer",
+)
+
+
+def has_generic_filler(post):
+    """Flag common vague phrases that add little specific information."""
+    lowered = post.lower()
+    return any(phrase in lowered for phrase in GENERIC_PHRASES)
+
+
 def build_post_prompt(title, link, snippet):
     return f"""
-Write one concise LinkedIn post for professionals interested in AI and technology.
+Write one specific, source-grounded LinkedIn post for professionals interested in AI and technology.
 
 SOURCE HEADLINE:
 {title}
@@ -84,56 +161,62 @@ SOURCE HEADLINE:
 SOURCE URL:
 {link}
 
-SOURCE CONTEXT:
+SOURCE MATERIAL (RSS summary and any article text retrieved):
 {snippet}
 
 EDITORIAL REQUIREMENTS:
-- Aim for {POST_TARGET_MIN_WORDS}-{POST_TARGET_MAX_WORDS} words. Never exceed {POST_HARD_MAX_WORDS} words.
-- Focus on one useful insight from the supplied source.
-- Start with a specific, clear sentence. Avoid generic openings and clickbait.
-- Explain what is new or notable and why it matters to a professional reader.
-- Give at most one practical takeaway, and only if the source supports it.
+- Aim for {POST_TARGET_MIN_WORDS}-{POST_TARGET_MAX_WORDS} words, but shorter is better than filler. Never exceed {POST_HARD_MAX_WORDS} words.
+- State the actual reported event, product change, research finding, or announcement in the first 1-2 sentences. Name the company, product, feature, result, or change when the source provides it.
+- Include at least one concrete, verifiable detail from the supplied source. If no concrete detail is available, do not generalize or guess; return exactly SKIP: INSUFFICIENT SOURCE DETAIL.
+- Explain one credible implication for professionals, clearly marking interpretation as interpretation rather than fact.
+- Give at most one practical takeaway, and only if it logically follows from the source.
 - Use simple English, short sentences, and short mobile-friendly paragraphs.
-- Separate source-supported facts from interpretation.
-- Do not invent features, settings, configurations, statistics, outcomes, quotes, or implementation steps.
+- Do not invent workforce changes, motivations, features, settings, configurations, statistics, outcomes, quotes, or implementation steps.
+- Do not infer an organization's strategy, hiring needs, or market direction from a vague headline alone.
 - Do not claim personal experience unless explicitly supplied in the source.
-- Do not force three bullets, a personal reflection, emojis, hashtags, or a closing question.
-- Avoid hype, generic AI clichés, repeated points, and corporate jargon.
-- Do not claim a tool saves time or improves results unless the source supports that claim.
-- If the source lacks detail, write only what is supported rather than adding filler.
+- Avoid vague filler such as "the evolving landscape", "valuable insights", "important shifts", and "keeping an eye on".
+- Do not force bullets, personal reflection, emojis, hashtags, or a closing question.
 - Return only the post text. No title, labels, analysis, word count, or code fence.
 """.strip()
 
 
 def generate_linkedin_post(title, link, snippet=""):
     """Generate a post; retry once if long, then reject any draft over the hard limit."""
-    prompt = build_post_prompt(title, link, snippet)
+    source_context = fetch_source_context(link, snippet)
+    prompt = build_post_prompt(title, link, source_context)
     post = call_gemini(prompt)
     if not post:
         return None
+    if post.strip().upper().startswith("SKIP: INSUFFICIENT SOURCE DETAIL"):
+        print("Skipping candidate: source did not support a specific, useful post.")
+        return None
 
     words = count_words(post)
-    if words > POST_HARD_MAX_WORDS:
-        print(f"Draft is too long ({words} words); requesting one concise rewrite.")
+    needs_revision = words > POST_HARD_MAX_WORDS or has_generic_filler(post)
+    if needs_revision:
+        reasons = []
+        if words > POST_HARD_MAX_WORDS:
+            reasons.append(f"over the {POST_HARD_MAX_WORDS}-word limit ({words} words)")
+        if has_generic_filler(post):
+            reasons.append("contains generic filler")
+        print("Requesting one revision: " + "; ".join(reasons))
         retry_prompt = (
             prompt
-            + f"\n\nREVISION REQUIRED: The prior draft exceeded {POST_HARD_MAX_WORDS} words. "
-            + f"Rewrite in {POST_TARGET_MIN_WORDS}-{POST_TARGET_MAX_WORDS} words, retaining "
-            + "only the strongest source-supported point. Return only the revised post."
+            + f"\n\nREVISION REQUIRED: The previous draft {', '.join(reasons)}. "
+            + f"Rewrite in no more than {POST_TARGET_MAX_WORDS} words. Name the concrete source fact, "
+            + "remove vague claims and unsupported inference. If source evidence is insufficient, "
+            + "return exactly SKIP: INSUFFICIENT SOURCE DETAIL. Return only the revised post."
         )
         post = call_gemini(retry_prompt)
-        if not post:
+        if not post or post.strip().upper().startswith("SKIP: INSUFFICIENT SOURCE DETAIL"):
             return None
         words = count_words(post)
 
-    if words > POST_HARD_MAX_WORDS:
-        print(f"Skipping draft: still over the {POST_HARD_MAX_WORDS}-word limit ({words}).")
+    if words > POST_HARD_MAX_WORDS or has_generic_filler(post):
+        print(f"Skipping draft: failed quality checks (words={words}, generic_filler={has_generic_filler(post)}).")
         return None
 
-    if words < POST_TARGET_MIN_WORDS:
-        print(f"Draft has {words} words, below target; accepting rather than adding filler.")
-    else:
-        print(f"Draft passed length check: {words} words.")
+    print(f"Draft passed quality checks: {words} words.")
     return post
 
 
