@@ -190,6 +190,16 @@ CORPORATE_PHRASES = (
     "strategic imperative", "value proposition", "at scale",
 )
 
+# These checks deliberately cover only clear causal wording.  They are a backstop
+# for the model fact-checker: a draft can still discuss a possible implication,
+# but it must not present a cause when the supplied source gives no cause.
+CAUSAL_CUES = (
+    "because", "due to", "as a result", "therefore", "which is why",
+    "caused", "causing", "leads to", "leading to", "results in",
+    "drives", "driven by", "shows that", "proves that",
+)
+NUMBER_PATTERN = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?%?(?![\w.])")
+
 
 def has_complex_or_corporate_language(post):
     """Catch common corporate language that does not fit the user's plain-English style."""
@@ -201,6 +211,50 @@ def has_generic_filler(post):
     """Flag common vague phrases that add little specific information."""
     lowered = post.lower()
     return any(phrase in lowered for phrase in GENERIC_PHRASES)
+
+
+def normalized_numbers(text):
+    """Return numeric facts in a comparison-friendly form (for example, 1,000 -> 1000)."""
+    return {match.group(0).replace(",", "") for match in NUMBER_PATTERN.finditer(text)}
+
+
+def has_unsupported_numeric_fact(post, source_context):
+    """Reject a draft that introduces a number not present in the supplied source."""
+    return not normalized_numbers(post).issubset(normalized_numbers(source_context))
+
+
+def omits_available_numeric_fact(post, source_context):
+    """Keep a useful reported figure when the source has one, rather than replacing it with a vague summary."""
+    source_numbers = normalized_numbers(source_context)
+    return bool(source_numbers) and not bool(normalized_numbers(post) & source_numbers)
+
+
+def has_unsupported_causality(post, source_context):
+    """Reject explicit causal claims unless the supplied source also states a causal link."""
+    lowered_post = post.lower()
+    if not any(cue in lowered_post for cue in CAUSAL_CUES):
+        return False
+    lowered_source = source_context.lower()
+    return not any(cue in lowered_source for cue in CAUSAL_CUES)
+
+
+def draft_quality_problems(post, source_context):
+    """Return deterministic reasons to revise or reject a draft before model verification."""
+    problems = []
+    words = count_words(post)
+    if words > POST_HARD_MAX_WORDS:
+        problems.append(f"over the {POST_HARD_MAX_WORDS}-word limit ({words} words)")
+    if has_generic_filler(post):
+        problems.append("contains generic filler")
+    if has_complex_or_corporate_language(post):
+        problems.append("uses corporate or complex language")
+    if has_unsupported_numeric_fact(post, source_context):
+        problems.append("adds a number not in the source")
+    if omits_available_numeric_fact(post, source_context):
+        problems.append("omits the source's available numeric detail")
+    if has_unsupported_causality(post, source_context):
+        problems.append("states a cause the source does not state")
+    return problems
 
 
 def build_post_prompt(title, link, snippet):
@@ -219,16 +273,17 @@ SOURCE MATERIAL (RSS summary and any article text retrieved):
 EDITORIAL REQUIREMENTS:
 - Prefer 60-110 words. A post can be shorter when the story is simple. Never exceed {POST_HARD_MAX_WORDS} words. Do not add words just to reach a target.
 - Start with the actual reported event in the first sentence. Name the company, product, or change and include a concrete detail from the source.
-- Explain only what the source confirms. Do not turn a reported change into a claim about why it happened unless the source explicitly says why.
+- Keep at least two traceable source anchors when available: the named company or product, the reported change, and an exact number, date, quote, or other specific detail. If the source has a useful number, include that exact number. Do not make up or round numbers.
+- Explain only what the source confirms. Do not say a change happened "because", "due to", or "as a result" of something unless the source explicitly gives that reason. Do not turn a reported change into a broader claim about AI, jobs, or the market.
 - If the source does not provide a clear event and at least one concrete detail, return exactly SKIP: INSUFFICIENT SOURCE DETAIL.
-- Add one short "why it matters" point only when it follows directly from the facts. Clearly separate fact from possible implication.
-- Do not force a lesson, career advice, prediction, or practical takeaway. If there is no useful takeaway supported by the story, leave it out.
+- Add one short "why it matters" point only when it follows directly from the facts. Clearly separate fact from a possible implication by using words such as "could" or "may". A single grounded question is allowed when it helps readers think about that implication; do not use a question as a slogan or a prediction.
+- Do not force a lesson, career advice, prediction, practical takeaway, or question. If there is no useful, grounded implication, leave it out.
 - Write like the user: basic everyday English, direct and natural, short sentences, short paragraphs. Use words people commonly use in normal conversation.
 - Avoid corporate jargon, complex vocabulary, grand claims, formal report language, and phrases that sound like a company announcement.
 - Do not use words or phrases such as "paramount", "nuanced judgment", "strategic thinking", "evolving landscape", "valuable insights", "leverage", "synergy", "transformative", or "offers a glimpse into".
 - Do not invent numbers, dates, motives, workforce changes, features, settings, outcomes, quotes, or steps.
 - Do not claim personal experience or write "I" as if the user personally did something.
-- No forced bullets, emojis, hashtags, or closing questions.
+- No forced bullets, emojis, hashtags, or generic closing questions.
 - Return only the post text. No title, labels, analysis, word count, or code fence.
 """.strip()
 
@@ -253,8 +308,10 @@ DRAFT TO CHECK:
 
 Return PASS only if all these conditions are met:
 - Every factual claim is directly supported by the source material.
+- Every number, date, percentage, and comparison matches the source exactly. When the source includes a useful number, the draft keeps at least one such number instead of replacing the story with a vague summary.
 - Any claim explaining why something happened is explicitly stated by the source, not guessed from timing or context.
-- Any prediction or interpretation is clearly marked as a possibility and follows reasonably from the source.
+- Any prediction or interpretation is clearly marked as a possibility and follows reasonably from the source. It must not state that AI, a company action, or a market change caused a result unless the source says so.
+- A question is allowed only if it is a useful, answerable implication of the reported facts. Reject generic engagement questions.
 - The draft does not add general career advice just to fill space.
 - The draft is written in basic everyday English and does not use corporate jargon.
 
@@ -280,20 +337,8 @@ def generate_linkedin_post(title, link, snippet=""):
         print("Skipping candidate: source did not support a specific, useful post.")
         return None
 
-    words = count_words(post)
-    needs_revision = (
-        words > POST_HARD_MAX_WORDS
-        or has_generic_filler(post)
-        or has_complex_or_corporate_language(post)
-    )
-    if needs_revision:
-        reasons = []
-        if words > POST_HARD_MAX_WORDS:
-            reasons.append(f"over the {POST_HARD_MAX_WORDS}-word limit ({words} words)")
-        if has_generic_filler(post):
-            reasons.append("contains generic filler")
-        if has_complex_or_corporate_language(post):
-            reasons.append("uses corporate or complex language")
+    reasons = draft_quality_problems(post, source_context)
+    if reasons:
         print("Requesting one revision: " + "; ".join(reasons))
         retry_prompt = (
             prompt
@@ -306,17 +351,16 @@ def generate_linkedin_post(title, link, snippet=""):
         post = call_gemini(retry_prompt)
         if not post or post.strip().upper().startswith("SKIP: INSUFFICIENT SOURCE DETAIL"):
             return None
-        words = count_words(post)
+        reasons = draft_quality_problems(post, source_context)
 
-    if words > POST_HARD_MAX_WORDS or has_generic_filler(post) or has_complex_or_corporate_language(post):
+    if reasons:
         print(
             "Skipping draft: failed quality checks "
-            f"(words={words}, generic_filler={has_generic_filler(post)}, "
-            f"corporate_language={has_complex_or_corporate_language(post)})."
+            f"({'; '.join(reasons)})."
         )
         return None
 
-    print(f"Draft passed style and length checks: {words} words.")
+    print(f"Draft passed deterministic quality checks: {count_words(post)} words.")
     if not verify_post_against_source(post, title, link, source_context):
         return None
     return post
